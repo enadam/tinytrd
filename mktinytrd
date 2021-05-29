@@ -1,0 +1,77 @@
+#!/bin/bash -e
+#
+# mktinytrd -- create an initrd
+#
+# This script is really just a wrapper around mkchroot and mkcpio.py.
+# By default it creates a chroot in the "chroot" directory and outputs
+# cpio archives compressed with xz(1) containing the "chroot" and the
+# "scripts" directories.
+#
+# Usage: mktinytrd [-i <scripts-dir>] [-o <chroot-dir>] [-Z] [-crl] [-RIXDx]
+#                  [<additional-dir>] ...
+#
+# With -io you can override the default "chroot" and "scripts" directories.
+# The chroot is only created if the <chroot-dir> does not exist yet.  The
+# -Z flag disables the compression of the output cpio archives.
+#
+# The -crl flags are passed to mkchroot, while the others are passed to
+# mkcpio.py.  You can specify <addition-dir>:s to include in the initrd,
+# which are processed exactly the same way as the <scripts-dir>.
+
+chroot_dir="chroot";
+scripts_dir="scripts";
+
+mkchroot_opts=();
+mkcpio_opts=();
+
+# The compression parameters are exactly the same as used by the kernel:
+# https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/scripts/xz_wrap.sh?h=v5.12#n23
+compress="xz -c --check=crc32 --x86 --lzma2=dict=32MiB";
+
+while getopts "i:o:ZcrlRIXD:x:" optchar;
+do
+	case "$optchar" in
+	i)
+		scripts_dir="$OPTARG";;
+	o)
+		chroot_dir="$OPTARG";;
+	Z)
+		compress="";;
+	c|r|l)
+		mkchroot_opts[${#mkchroot_opts[@]}]="-$optchar";;
+	R|I|X)
+		mkcpio_opts[${#mkcpio_opts[@]}]="-$optchar";;
+	D|x)
+		mkcpio_opts[${#mkcpio_opts[@]}]="-$optchar";
+		mkcpio_opts[${#mkcpio_opts[@]}]="$OPTARG";;
+	*)
+		exit 1;;
+	esac
+done
+
+shift $(($OPTIND - 1));
+
+# Assume mkchroot and mkcpio.py are in the same directory as mktinytrd.
+bin=`dirname "$0"`;
+
+if [ ! -d "$chroot_dir" ];
+then
+	"$bin/mkchroot" "${mkchroot_opts[@]}" "$chroot_dir" "$scripts_dir" \
+			"$@";
+else
+	echo "$0: $chroot_dir exists, leaving it untouched" >&2;
+fi
+
+mkcpio() {
+	"$bin/mkcpio.py" "${mkcpio_opts[@]}" "$chroot_dir" "$scripts_dir" \
+			"$@";
+}
+
+if [ "$compress" != "" ];
+then
+	mkcpio | $compress;
+else
+	mkcpio;
+fi
+
+# End of mktinytrd

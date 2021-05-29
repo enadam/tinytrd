@@ -1,0 +1,42 @@
+#!/bin/busybox sh
+#
+# xor -- read hexadecimal strings from the standard input and xor them
+#
+# If a line is shorter than the longest one, it's supposed to be padded
+# with zeroes.
+
+set -e;
+
+# Read all input by one hexadecimal digit at a time.  $i is the index
+# in the current line, while $n is the length of the longest line
+# encountered so far.  The intermediate buffer is kept in $buf_$i,
+# for the lack of arrays in the busybox shell.
+i=1;
+n=0;
+while read -n 1 c;
+do
+	if [ "$c" != "" ];
+	then	# buf[$i] ^= $c
+		eval buf_$i=$((buf_$i ^ $((0x$c))));
+		[ $n -gt $i ] \
+			|| n=$i;
+		i=$((i + 1));
+	else	# Newline, begin reading a new hexadecimal string.
+		i=1;
+	fi
+done
+
+# Print the xor:ed result as a hexadecimal string.  Don't use `seq $n`,
+# because the input can be long.
+i=1
+while [ $i -le $n ];
+do
+	eval printf '%x' \$buf_$i;
+	i=$((i + 1));
+done
+
+# Only terminate the line if we printed something.
+[ $n -lt 1 ] \
+	|| echo;
+
+# End of xor

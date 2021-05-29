@@ -1,0 +1,169 @@
+#!/bin/busybox sh
+#
+# unlock_root -- obtain the key for cryptsetup and set up $DM_DEV
+#
+# Define DRY_RUN=1 to see the key and the cryptsetup invocation.
+
+set -e -o pipefail;
+source settings.sh;
+
+# We're done if $DM_DEV is configured already.
+using DM_DEV;
+dev_mapper="/dev/mapper/$DM_DEV";
+if [ -b "$dev_mapper" ];
+then
+	echo "$0: $dev_mapper is already set up." >&2;
+	exit;
+fi
+
+# Load $CRYPTSETUP_CONF if defined.
+get_me -f "$CRYPTSETUP_CONF" \
+	&& source "$CRYPTSETUP_CONF";
+
+# Verify that we have the necessary settings.
+using CRYPTSETUP ROOT_DEV;
+
+if [ "$CRYPTSETUP" = "plain" ];
+then	# These are important settings which must be defined explicitly.
+	defined CIPHER_ALGO KEY_SIZE HASH_ALGO;
+else
+	assert CRYPTSETUP "luks";
+	get_me -f "$LUKS_METADATA" || true;
+fi
+
+[ "$PASSWORD" = "argon2" ] \
+	&& using ARGON2_SALT;
+
+# Private functions
+ungpg() {
+	# Invoke gpg to decrypt the symmetrically-encrypted $1,
+	# taking the password from the standard input.  Assume that
+	# non-zero exit status is because of wrong password, which
+	# we should retry.
+	gpg --quiet --batch --decrypt --passphrase-fd 0 "$1" || true;
+}
+
+decode_key_to_bin() {
+	case "$KEY_FILE" in
+	*.gpg)	# The content is supposed to be binary.
+		echo "$1" | ungpg "$KEY_FILE";;
+	*)
+		cat "$KEY_FILE";;
+	esac
+}
+
+decode_key_to_hex() {
+	case "$KEY_FILE" in
+	*.gpg)
+		echo "$1" | ungpg "$KEY_FILE" | bin2hex;;
+	*)
+		bin2hex "$KEY_FILE";;
+	esac
+}
+
+call_argon2() {
+	# The salt should be a random binary in hexadecimal encoding.
+	# Make sure it doesn't contain NULs, which would truncate it.
+	argon2 "`echo "$ARGON2_SALT" | hex2bin | tr '\0' '\1'`" \
+			-r $ARGON2_OPTS;
+}
+
+call_cryptsetup() {
+	# If stdin is not a terminal, take it as a binary key.
+	[ -t 0 ] \
+		|| set -- --key-file=- "$@";
+
+	# Figure out the command line.
+	if [ "$CRYPTSETUP" = "plain" ];
+	then
+		[ -n "$HASH_ALGO" ] \
+			&& set -- --hash "$HASH_ALGO" "$@";
+		[ -n "$KEY_SIZE" ] \
+			&& set -- --key-size "$KEY_SIZE" "$@";
+		[ -n "$CIPHER_ALGO" ] \
+			&& set -- --cipher "$CIPHER_ALGO" "$@";
+	elif [ "$CRYPTSETUP" = "luks" ];
+	then
+		[ -n "$LUKS_METADATA" ] \
+			&& set -- --header "$LUKS_METADATA" "$@";
+	fi
+
+	set -- cryptsetup open --type "$CRYPTSETUP" "$@" \
+			"$ROOT_DEV" "$DM_DEV";
+
+	if [ "$DRY_RUN" ];
+	then	# Just log what would have been done, passing through the key.
+		echo "$@" >&2;
+		[ -t 0 ] \
+			|| cat;
+	else	# Suppress errors, which are likely because of wrong password.
+		"$@" || true;
+	fi
+}
+
+# Prompt for a password and read it into $2.
+password_prompt() {
+	# Don't trim whitespace around the input.
+	local IFS="";
+
+	# Always read from the terminal.  -r makes '\' non-special.
+	if read -s -r -p "$1: " "$2";
+	then	# Newline after the prompt.
+		echo;
+	else	# User hit ^D.
+		echo;
+		return 1;
+	fi < /dev/tty > /dev/tty 2>&1;
+}
+
+# Main starts here.
+get_me -e "$ROOT_DEV";
+[ "x$KEY_FILE" = "x-" ] \
+	|| get_me -f "$KEY_FILE" \
+	|| true;
+while [ ! -b "$dev_mapper" ];
+do
+	if [ "$KEY_FILE" = "" -a "$PASSWORD" = "" ];
+	then	# cryptsetup prompts for the password itself.
+		call_cryptsetup;
+		if [ -z "$DRY_RUN" ];
+		then
+			continue;
+		else
+			break;
+		fi
+	fi
+
+	# Get the password for $KEY_FILE if it's a *.gpg.
+	[ "${KEY_FILE%.gpg}" = "$KEY_FILE" ] \
+		|| password_prompt "GnuPG Password" gpgpass;
+
+	[ "$PASSWORD" = "" ] \
+		|| password_prompt "Password" xorpass;
+
+	if [ "$PASSWORD" = "sha512" ];
+	then	# If there is no $KEY_FILE, the hash of $xorpass is simply
+		# converted to binary and fed to cryptsetup.
+		(	# The output of sha512sum is hexadecimal.
+			echo -n "$xorpass" | sha512sum | sed -e 's/ .*$//';
+			[ "$KEY_FILE" = "" ] \
+				|| decode_key_to_hex "$gpgpass";
+		) | xor | hex2bin | call_cryptsetup;
+	elif [ "$PASSWORD" = "argon2" ];
+	then
+		(	# The output of argon2 -r is hexadecimal.
+			echo -n "$xorpass" | call_argon2;
+			[ "$KEY_FILE" = "" ] \
+				|| decode_key_to_hex "$gpgpass";
+		) | xor | hex2bin | call_cryptsetup;
+	else	# $KEY_FILE != "", though it might not be *.gpg,
+		# in which case $gpgpass is empty and ignored.
+		assert PASSWORD "";
+		decode_key_to_bin "$gpgpass" | call_cryptsetup;
+	fi
+
+	[ -z "$DRY_RUN" ] \
+		|| break;
+done
+
+# End of unlock_root

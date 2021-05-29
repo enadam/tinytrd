@@ -1,0 +1,150 @@
+#!/bin/bash -e
+#
+# mkchroot -- create a tinytrd chroot with all the needed external binaries
+#
+# This chroot will be used to create a cpio archive from by mkcpio.py.
+# It will contain all binaries required by the tinytrd scripts and their
+# library dependencies.  You can customize the list by changing $INSTALL
+# below.  busybox is a hard requirement.
+#
+# Usage: mkchroot [-crl] <output-dir> [<input-dir>] ...
+#
+# The flags tell the script how to get the files in the chroot:
+# * -c: just copy them
+# * -l: create hardlinks; this is the most efficient and is the default
+#       for root
+# * -r: use reflink if possible; this is the default if the calling user
+#       is not root because ordinary users can't hardlink system files
+#
+# There's no option to create the chroot just with symlinks because ldconfig
+# wouldn't process the libraries.
+#
+# The chroot is created in <output-dir>, which may exist.  As a precaution,
+# no files are overwritten because doing so in the wrong directory may have
+# devastating effects.
+#
+# You may specify additional <input-dir>:s, then library dependencies for the
+# the executables therein will be added to the chroot.
+
+# $INSTALL is the list of binaries to install.  These are required.
+INSTALL="findmnt blkid";
+
+# The rest are optional if you don't intend to use certain features:
+# comment this out if you'll have $CRYPTSETUP=none in root.conf
+INSTALL="$INSTALL cryptsetup";
+
+# ... if you won't have *.gpg as $KEY_FILE
+INSTALL="$INSTALL gpg";
+
+# ... if you won't have $PASSWORD=argon2
+INSTALL="$INSTALL argon2";
+
+# Program code
+# Return the full path to the specified programs.  This is like which(1)
+# but it also has stderr.
+which() {
+	[ $UID -eq 0 ] \
+		|| local PATH="$PATH:/usr/sbin:/sbin";
+
+	for prg;
+	do	# Tell bash to search the $PATH even if $prg is a built-in.
+		if ! type -P "$prg";
+		then
+			echo "$0: $prg: not found" >&2;
+			return 1;
+		fi
+	done
+}
+
+# Main starts here.
+set -o pipefail;
+
+# Parse the command line.
+# Use $cpopts to copy all programs and libraries to the chroot.
+hardlink="--link --no-dereference";
+reflink="--reflink=auto -a";
+if [ $UID -eq 0 ];
+then
+	cpopts="$hardlink";
+else
+	cpopts="$reflink";
+fi
+
+while getopts "crl" optchar;
+do
+	case "$optchar" in
+	c)
+		cpopts="-a";;
+	r)
+		cpopts="$reflink";;
+	l)
+		cpopts="$hardlink";;
+	*)
+		exit 1;;
+	esac
+done
+
+shift $(($OPTIND - 1));
+if [ $# -lt 1 ];
+then
+	echo "Usage: $0 [-crl] <output-dir> [<input-dir>] ..." >&2;
+	exit 1;
+else
+	dst="$1";
+fi
+
+# Never overwrite files.
+cpopts="$cpopts --no-clobber --";
+
+# xargs(1) would call the program given as argument even if there's no input.
+# Make that a NOP.
+xargs="xargs -r";
+
+# Install busybox and its applets to /bin.
+mkdir -p "$dst/bin";
+cp -t "$dst/bin" $cpopts "`which busybox`";
+"$dst/bin/busybox" --install "$dst/bin";
+
+# Install the other binaries to wherever they are from.
+which $INSTALL | $xargs cp --parent -t "$dst" $cpopts;
+
+# Install the library dependencies:
+# * find all executables and symlinks pointing to executables
+#   * but don't follow symlinks to directories
+# * eliminate duplicates like busybox hardlinks (sort -k 1,2 -u)
+# * filter out scripts (file | sed)
+# * extract the dependencies (ldd | sed)
+# * eliminate duplicates
+# * resolve the symlinks to the libraries they point to (realpath)
+# * copy the libraries to the directories they are installed in (cp --parent)
+#
+# Be noisy when the pipeline fails because ldd can fail silently.
+trap "echo '$0: error while installing library dependencies' >&2" ERR;
+find -L "$@" \( -type f -perm /ugo+x -printf '%D %i %p\0' \) \
+		-o \( -type d -xtype l -prune \) \
+	| sort -z -k 1,2 -u \
+	| cut -z -d' ' -f3- \
+	| $xargs -0 file -L -00 \
+	| sed -z -ne 'h; n; /\<text executable$/d; x; p' \
+	| $xargs -0 ldd \
+	| sed -ne 's/ (0x[0-9a-f]\+)$//; T; s/^\t//; T; s/.*=> //; /^[/]/p;' \
+	| sort -u \
+	| $xargs realpath \
+	| $xargs cp --parent -t "$dst" $cpopts;
+trap ERR;
+
+# Run ldconfig.  Create an empty config because otherwise it complains.
+ld_so_conf="$dst/etc/ld.so.conf";
+mkdir -p "$dst/etc";
+touch "$ld_so_conf";
+PATH="$PATH:/sbin" ldconfig -r "$dst";
+[ -s "$ld_so_conf" ] \
+	|| rm "$ld_so_conf";
+
+# Create the symlink to the ELF interpreter if necessary, ldconfig doesn't
+# do that for us.
+ldso="/lib64/ld-linux-x86-64.so.2";
+[ ! -f "$ldso" -o -e "$dst/$ldso" ] \
+	|| cp --parent -t "$dst" $cpopts "$ldso";
+
+# End of mkchroot

@@ -1,0 +1,105 @@
+#!/bin/sh
+#
+# init -- single-pager init program
+#
+# It does little more than mounting the root file system.  All the main
+# logic fits on a screen.
+
+PATH="/root:/tinytrd:/usr/sbin:/usr/bin:/sbin:/bin";
+
+source settings.sh;
+using ROOT_DEV MOUNT_DIR;
+
+# Run a command, like a shell with a controlling terminal, which enables
+# job control.
+with_ctty() {
+	setsid cttyhack "$@";
+}
+ 
+# Launch an interactive shell for investigation.
+shell() {
+	echo;
+	with_ctty sh -l;
+	echo;
+}
+
+# Wait until $ROOT_DEV becomes available.
+wait_for_root_dev() {
+	if [ "$ROOT_DEV" != "" ];
+	then	# Scan for $ROOT_DEV periodically.
+		if [ ! -e "$ROOT_DEV" ];
+		then
+			msg="Waiting for $ROOT_DEV to come online";
+			msg="$msg (^C to interrupt)...";
+			echo -n "$msg";
+			sleep 1;
+			while [ ! -e "$ROOT_DEV" ];
+			do	# Let the user interrupt the waiting
+				# to intervene manually if necessary.
+				echo -n .;
+				if ! interruptible_sleep 1;
+				then
+					shell;
+					echo -n "$msg";
+				fi
+			done
+			echo;
+		fi
+	else	# Use blkdev(8) to scan for $ROOT_DEV_SELECTOR.
+		using ROOT_DEV_SELECTOR;
+		root_dev=`blkid -t "$ROOT_DEV_SELECTOR" -o device`;
+		if [ $? -ne 0 ];
+		then
+			msg="Waiting for root device to come online";
+			msg="$msg (^C to interrupt)...";
+			echo -n "$msg";
+			sleep 1;
+			while :;
+			do
+				root_dev=`blkid -t "$ROOT_DEV_SELECTOR" \
+						-o device`;
+				[ $? -eq 0 ] \
+					&& break;
+				echo -n .;
+
+				if ! interruptible_sleep 1;
+				then
+					shell;
+					echo -n "$msg";
+				fi
+			done
+			echo;
+		fi
+
+		# Export it for the scripts we call.
+		export ROOT_DEV="$root_dev";
+	fi
+}
+
+# Main starts here.
+mkdir -p /proc /dev "$MOUNT_DIR" /mnt /tmp /var/run;
+mount -t proc		-o noexec,nosuid,nodev	proc /proc;
+mount -t devtmpfs	-o nosuid		udev /dev;
+
+call on_boot;
+wait_for_root_dev;
+
+# Run mount_root with a controlling TTY in case it needs to launch
+# an interactive shell.
+while ! with_ctty mount_root;
+do	# We expect the script to try until it succeeds, but we need
+	# to prepare for the unexpected, for example if it's killed
+	# by SAK.
+	interruptible_sleep 3 \
+		|| shell;
+done
+
+call post_mount;
+
+mount --move /dev  "$MOUNT_DIR/dev";
+mount --move /proc "$MOUNT_DIR/proc";
+mount -t tmpfs -o nosuid,nodev,size=10%,mode=0755 tmpfs "$MOUNT_DIR/run";
+
+exec run-init "$MOUNT_DIR" /sbin/init;
+
+# End of init

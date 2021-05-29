@@ -1,0 +1,69 @@
+tinytrd is a minimalistic initrd-generator.  Its intended use-case is
+booting from an external media and mounting an encrypted root file system.
+It supports a variety of unlocking methods and requires little to almost
+no configuration.  The init scripts are short and understandable, though
+graphical booting and other fancies are out of scope.  As a result the
+generated initrd can be smaller than a general-purpose one.  Apart from
+busybox there are only optional dependencies.
+
+The prominent ways to unlock the root file system are:
+  * luks: this requires zero configuration
+  * luks with detached header: you can store the metadata on the boot media,
+    leaving only the ciphertext on the root device, which may make it harder
+    to crack
+  * plain encryption (cryptsetup --type plain) with argon2-hashed password:
+    argon2 is a password-stretching function, which slows down brute-forcing
+    attacks
+  * plain encryption with embedded key: this way you don't need to type in any
+    password, it's taken from the (ideally hardware-encrypted) boot media
+  * plain encryption with encrypted key: if you don't have such hardware and
+    don't want to use luks with detached header, you can keep the key in the
+    initrd encrypted with gpg
+  * plain encryption with password and key: in this case the hashed password
+    entered during boot is XOR:ed with the key in the initrd, their combination
+    being fed to cryptsetup.  Consequently just losing either of the password
+    or the boot media gives no security advantage to the attacker.  This is the
+    recommended setup.
+
+Regardless of which method you choose, it is important to have a backup plan
+to boot your system at all times.  To prepare your root device for one of the
+plain mode setups, see the testing instructions below.
+
+You can set up tinytrd just in a few steps:
+
+1) Write root.conf, the configuration read by the init scripts during boot.
+   See the included root.conf.sample.  You can drop this file in the scripts
+   directory.  To test your configuration:
+   * Add the scripts directory to your $PATH.
+   * Set $ROOT_CONF to your root.conf.  You can also make it empty explicitly
+     (export ROOT_CONF=""), in which case all configuration is expected to be
+     in the environment.  Optionally you can set $DRY_RUN to 1.
+   * Invoke the unlock_root script, which calls cryptsetup exactly as it would
+     when booting.  If you're just setting up your root device you can create
+     the file system on it now.
+   * You can test mounting end-to-end by calling the mount_root script.
+2) Customize the scripts directory to add your own stuff to the generated
+   initrd, like your keys.  You can leave the keys encrypted in the directory,
+   they will be automatically decrypted when the initrd is generated.  You can
+   also add any other files you want to be present, like kernel modules.  See
+   mkcpio.py for details.
+3) Customize the binaries to INSTALL to the initrd in mkchroot if you wish.
+   For example if you don't need argon2 or gpg, you can leave them out.
+   There are only a couple of such optional dependencies.
+
+When done, run mktinytrd, which will output the complete initrd you can write
+to the boot media right away.  If there are files to decrypt, they will be on
+the fly.
+
+When booting, tinytrd first waits until $ROOT_DEV becomes available.  You can
+interrupt it by hitting ^C, which opens a shell.  When you're finished, init
+continues from where it left off.
+
+You'll be prompted for a password if one is required to unlock your root file
+system.  Hitting ^D opens a shell again.  You can mount the rootfs manually,
+or do anything else that unblocks this effort.  Returning from the subshell
+resumes the init process, which will proceed if $MOUNT_DIR has been mounted.
+Otherwise you'll be prompted again until the mount command succeeds.
+
+As a last step, control is transferred to the /sbin/init program of the newly
+mounted file system and the initrd is deleted from memory.

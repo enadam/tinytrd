@@ -1,0 +1,7 @@
+#!/bin/sh -e
+
+# Convert the inputs to a single line of hexadecimals.
+# busybox' hexdump accepts '-' as input.
+exec busybox hexdump -v -e '1/1 "%02x"' "$@";
+
+# End of bin2hex

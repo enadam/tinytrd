@@ -1,0 +1,101 @@
+#
+# root.conf.sample -- run-time configuration for the tinytrd scripts
+#
+# This is a shell fragment, which needs to be placed somewhere in the
+# scripts directory.  It defines environment variables and hook functions.
+#
+# Recognized variables are described below with their default values if they
+# have one, otherwise the right hand side is left empty.
+
+# The /dev/ice containing the root file system.  This is passed to cryptsetup
+# or the mount command if cryptsetup is not used.  Use $ROOT_DEV_SELECTOR
+# if the concrete device is not known in advance.  Either of these settings
+# is required.
+ROOT_DEV=
+
+# Any specification like UUID=... understood by `blkid -t'.  When the device
+# is found, $ROOT_DEV is set.
+ROOT_DEV_SELECTOR=
+
+# The desired name of the dm-crypt device on the top of $ROOT_DEV.  It can be
+# anything you like.
+DM_DEV="rootfs";
+
+# Where to mount the root file system in the initrd.  Can be any non-existing
+# directory.
+MOUNT_DIR="/rootfs";
+
+# Tells whether to mount the root file system read-only.  Possible values
+# are "ro" (always read-only), "rw" (always read-write) and "auto" (first
+# make it read-only, then unless it's declared read-only in /etc/fstab
+# explicitly, make it read-write).
+ROOT_MODE="auto";
+
+# Additional mount options (for example btrfs subvolume).
+MOUNT_OPTS="";
+
+# Path to another, optional configuration file in the initrd containing
+# the cryptsetup settings.  This provides a bit of modularity.
+CRYPTSETUP_CONF="";
+
+# How to unlock the root file system.  Possible options are:
+#   * none:  if it's not encrypted
+#   * luks:  (cryptsetup open --type luks) cipher parameters are stored
+#            in the luks metadata
+#   * plain: (cryptsetup open --type plain) $CIPHER_ALGO, $KEY_SIZE and
+#            $HASH_ALGO must be defined
+CRYPTSETUP="luks";
+
+# Path to the luks metadata file if it's detached from $ROOT_DEV.
+# (This is the parameter for `cryptsetup open --type luks --header`.)
+LUKS_METADATA="";
+
+# --cipher, --key-size and --hash for `cryptsetup open --type plain'.
+# Mandatory if $CRYPTSETUP is "plain", otherwise ignored.  You can set
+# them to the empty string to use cryptsetup's defaults.
+CIPHER_ALGO=
+KEY_SIZE=
+HASH_ALGO=
+
+# If specified, this will be the input of `cryptsetup open'.  Intended for
+# $CRYPTSETUP == "plain".  You should also set $HASH_ALGO to "plain" if you
+# want to use $KEY_FILE as the concrete decyrption key.  In this case its size
+# in bits should be exactly $KEY_SIZE.  If the file has a .gpg extension it
+# will be decrypted with `gpg -d' when the root file system is being unlocked.
+# For this you should use symmetric encryption (`gpg -c').
+KEY_FILE="";
+
+# Ask for a password and hash it with either "sha512" or "argon2" (the possible
+# values of this setting).  Like $KEY_FILE this is also intended for the plain
+# mode of cryptsetup, and $HASH_ALGO should be set to plain too.  Use of argon2
+# is recommended.  See the testing instructions in the README to learn how to
+# prepare a device for this setup.
+#
+# When both $PASSWORD and $KEY_FILE are specified, then the hashed password is
+# XOR:ed with $KEY_FILE and the result will be the input for cryptsetup.  This
+# way both something you know (the password) and what you have (the $KEY_FILE)
+# are needed to unlock the root file system, but separately they are not any
+# help for an attacker.  It is important that $KEY_FILE be exactly as large as
+# the the hash (ie. 512 bits in case of "sha512"; with argon2 it's tunable).
+PASSWORD="";
+
+# These settings are only used if $PASSWORD is "argon2".  $ARGON2_SALT is the
+# hexadecimal salt of the hashing and is a required parameter.  It must be at
+# least 16 digits (8 bytes), but ideally twice as much.  $ARGON2_OPTS should
+# contain the desired length of the hash (-l) and the hardening parameters.
+# Section 4 of https://datatracker.ietf.org/doc/draft-irtf-cfrg-argon2 helps
+# in the choice.
+ARGON2_SALT=
+ARGON2_OPTS="";
+
+# If defined this function is called before waiting for $ROOT_DEV to become
+# available.  It can set the console font, load kernel modules and greet the
+# user for example.
+on_boot() { }
+
+# If defined this function is called after the root file system is mounted.
+# It can make sure there are no lingering processes running before beginning
+# the system's regular init process.
+post_mount() { }
+
+# End of root.conf.sample

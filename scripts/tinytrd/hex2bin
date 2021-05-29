@@ -1,0 +1,16 @@
+#!/bin/busybox sh
+#
+# Convert the output of bin2hex back to binary.  Invoke the busybox shell
+# directly because /bin/sh might not support read -n.
+
+set -e;
+
+# Read a pair of hexadecimal digits until the end of the file, ignore newlines
+# and convert them to binary.
+while read -n 2 c;
+do
+	[ "$c" = "" ] \
+		|| echo -ne "\x$c";
+done
+
+# End of hex2bin

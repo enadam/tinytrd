@@ -1,0 +1,80 @@
+#!/bin/busybox sh
+#
+# mount_root -- unlock $ROOT_DEV and mount it on $MOUNT_DIR
+#
+
+source settings.sh;
+using DM_DEV ROOT_MODE MOUNT_DIR;
+
+if [ "$DM_DEV" = "" ];
+then	# $ROOT_DEV is not encrypted, just mount it.
+	assert CRYPTSETUP none;
+	using ROOT_DEV;
+fi
+
+shell() {
+	# Add a newline in case the user exited the shell with ^D.
+	sh -l;
+	echo;
+}
+
+# Main starts here.
+# Determine the mount options.
+case "$ROOT_MODE" in
+ro|rw)
+	mount_opts="$ROOT_MODE";;
+*)	# Mount it read-only first then check the fstab.
+	assert ROOT_MODE auto;
+	mount_opts="ro";;
+esac
+
+[ "$MOUNT_OPTS" = "" ] \
+	|| mount_opts="$mount_opts,$MOUNT_OPTS";
+
+# Try until $MOUNT_DIR is mounted.  Unfortunately there isn't a good test(1)
+# for it.
+get_me -d "$MOUNT_DIR";
+while ! findmnt -nf --mountpoint "$MOUNT_DIR" > /dev/null;
+do
+	if [ "$DM_DEV" = "" ];
+	then	# $ROOT_DEV is not encrypted, don't try to unlock it.
+		call pre_mount;
+		mount -o "$mount_opts" "$ROOT_DEV" "$MOUNT_DIR" \
+			|| shell;
+	else
+		if ! unlock_root;
+		then	# Some error or user hit ^D to escape.
+			# The user can unlock $ROOT_DEV manually
+			# and may even mount $MOUNT_DIR for us.
+			shell;
+			continue;
+		fi
+
+		if ! mount -o "$mount_opts" "/dev/mapper/$DM_DEV" "$MOUNT_DIR";
+		then	# Try unlocking again, maybe the password was wrong.
+			cryptsetup close "$DM_DEV";
+			echo "Let's try this again.  (^C to get a shell)";
+			if ! interruptible_sleep 1;
+			then
+				echo;
+				shell;
+			fi
+		fi
+	fi
+done
+
+# If $ROOT_MODE is auto and / is not explicitly declared ro in $fstab,
+# remount it rw.
+root_mode="$ROOT_MODE";
+fstab="$MOUNT_DIR/etc/fstab";
+[ "$root_mode" = "auto" ] \
+	&& [ -f "$fstab" ] \
+	&& findmnt --fstab -F "$fstab" -nf --mountpoint / -O ro > /dev/null \
+	&& root_mode="ro";
+
+# If $root_mode is still "auto" and $MOUNT_DIR is not rw, remount it.
+[ "$root_mode" != "auto" ] \
+	|| findmnt -nf --mountpoint "$MOUNT_DIR" -O rw > /dev/null \
+	|| mount -o remount,rw "$MOUNT_DIR";
+
+# End of mount_root
