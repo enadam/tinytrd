@@ -12,7 +12,7 @@ The prominent ways to unlock the root file system are:
     leaving only the ciphertext on the root device, which may make it harder
     to crack
   * plain encryption (cryptsetup --type plain) with argon2-hashed password:
-    argon2 is a password-stretching function, which slows down brute-forcing
+    argon2 is a password stretching function, which slows down brute-forcing
     attacks
   * plain encryption with embedded key: this way you don't need to type in any
     password, it's taken from the (ideally hardware-encrypted) boot media
@@ -24,6 +24,13 @@ The prominent ways to unlock the root file system are:
     being fed to cryptsetup.  Consequently just losing either of the password
     or the boot media gives no security advantage to the attacker.  This is the
     recommended setup.
+
+Why not just luks?  Because then your sole defense is your password.  Requiring
+also something you have (the boot media in this case) to unlock the root file
+system improves security.  Why not luks with detached header kept on the boot
+media?  Because if the attacker manages to make a copy it, the header alone is
+enough to mount a brute-force search for your password, not needing access to
+the encrypted root file system.  The recommended setup protects again this.  
 
 Regardless of which method you choose, it is important to have a backup plan
 to boot your system at all times.  To prepare your root device for one of the
