@@ -23,57 +23,63 @@ shell() {
 	echo;
 }
 
-# Wait until $ROOT_DEV becomes available.
-wait_for_root_dev() {
-	if [ "$ROOT_DEV" != "" ];
-	then	# Scan for $ROOT_DEV periodically.
-		if [ ! -e "$ROOT_DEV" ];
-		then
-			msg="Waiting for $ROOT_DEV to come online";
-			msg="$msg (^C to interrupt)...";
-			echo -n "$msg";
-			sleep 1;
-			while [ ! -e "$ROOT_DEV" ];
-			do	# Let the user interrupt the waiting
-				# to intervene manually if necessary.
-				echo -n .;
-				if ! interruptible_sleep 1;
-				then
-					shell;
-					echo -n "$msg";
-				fi
-			done
-			echo;
-		fi
-	else	# Use blkdev(8) to scan for $ROOT_DEV_SELECTOR.
-		using ROOT_DEV_SELECTOR;
-		root_dev=`blkid -t "$ROOT_DEV_SELECTOR" -o device`;
-		if [ $? -ne 0 ];
-		then
-			msg="Waiting for root device to come online";
-			msg="$msg (^C to interrupt)...";
-			echo -n "$msg";
-			sleep 1;
-			while :;
-			do
-				root_dev=`blkid -t "$ROOT_DEV_SELECTOR" \
-						-o device`;
-				[ $? -eq 0 ] \
-					&& break;
-				echo -n .;
+# Wait until $dev becomes available.
+wait_for_dev() {
+	local dev="$1";
 
-				if ! interruptible_sleep 1;
-				then
-					shell;
-					echo -n "$msg";
-				fi
-			done
-			echo;
-		fi
+	if [ ! -e "$dev" ];
+	then	# Scan for $dev periodically.
+		local msg="Waiting for $dev to come online";
+		msg="$msg (^C to enter a subshell)...";
+		echo -n "$msg";
+		sleep 1;
 
-		# Export it for the scripts we call.
-		export ROOT_DEV="$root_dev";
+		while [ ! -e "$dev" ];
+		do	# Let the user interrupt the waiting
+			# to intervene manually if necessary.
+			echo -n .;
+			if ! interruptible_sleep 1;
+			then
+				shell;
+				echo -n "$msg";
+			fi
+		done
+		echo;
 	fi
+}
+
+# Use blkdev(8) to scan for $selector.  Returns the resolved $dev in $ret_var.
+wait_for_dev_selector() {
+	local selector="$1";
+	local ret_var="$2";
+
+	local dev=`blkid -t "$selector" -o device`;
+	if [ $? -ne 0 ];
+	then
+		local msg="Waiting for device to come online";
+		msg="$msg (^C to enter a subshell)...";
+		echo -n "$msg";
+		sleep 1;
+
+		while :;
+		do
+			dev=`blkid -t "$selector" -o device`;
+			[ $? -eq 0 ] \
+				&& break;
+
+			echo -n .;
+			if ! interruptible_sleep 1;
+			then
+				shell;
+				echo -n "$msg";
+			fi
+		done
+		echo;
+	fi
+
+	# Return $dev in $ret_var if specified.
+	[ -z "$ret_var" ] \
+		|| eval $ret_var=\"$dev\";
 }
 
 # Main starts here.
@@ -82,7 +88,16 @@ mount -t proc		-o noexec,nosuid,nodev	proc /proc;
 mount -t devtmpfs	-o nosuid		udev /dev;
 
 call on_boot;
-wait_for_root_dev;
+
+# Wait for $ROOT_DEV to become available.
+if [ "$ROOT_DEV" != "" ];
+then	# We have a concrete device to wait for.
+	wait_for_dev "$ROOT_DEV";
+else	# Export $ROOT_DEV for the scripts we call.
+	using ROOT_DEV_SELECTOR;
+	wait_for_dev_selector "$ROOT_DEV_SELECTOR" ROOT_DEV;
+	export ROOT_DEV;
+fi
 
 # Run mount_root with a controlling TTY in case it needs to launch
 # an interactive shell.
