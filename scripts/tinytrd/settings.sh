@@ -44,8 +44,6 @@ using() {
 			ROOT_MODE="auto";;
 		CRYPTSETUP)
 			CRYPTSETUP="luks";;
-		CIPHER_ALGO)
-			CIPHER_ALGO="akarmi";;
 		*)
 			error "$0: $setting is undefined";;
 		esac
