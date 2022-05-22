@@ -10,7 +10,8 @@
 # The /dev/ice containing the root file system.  This is passed to cryptsetup
 # or the mount command if cryptsetup is not used.  Use $ROOT_DEV_SELECTOR
 # if the concrete device is not known in advance.  Either of these settings
-# is required.
+# is required.  If both are present, $ROOT_DEV takes precedence, and it is
+# verified that it matches $ROOT_DEV_SELECTOR.
 ROOT_DEV=
 
 # Any specification like UUID=... understood by `blkid -t'.  When the device

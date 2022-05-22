@@ -3,7 +3,7 @@
 # init -- single-pager init program
 #
 # It does little more than mounting the root file system.  All the main
-# logic fits on a screen.
+# logic is less than 50 lines.
 
 PATH="/root:/tinytrd:/usr/sbin:/usr/bin:/sbin:/bin";
 
@@ -26,26 +26,51 @@ shell() {
 # Wait until $dev becomes available.
 wait_for_dev() {
 	local dev="$1";
+	local selector="$2";
 
-	if [ ! -e "$dev" ];
-	then	# Scan for $dev periodically.
-		local msg="Waiting for $dev to come online";
-		msg="$msg (^C to enter a subshell)...";
-		echo -n "$msg";
-		sleep 1;
+	while :;
+	do
+		if [ ! -e "$dev" ];
+		then	# Scan for $dev periodically.
+			local msg="Waiting for $dev to come online";
+			msg="$msg (^C to enter a subshell)...";
+			echo -n "$msg";
+			sleep 1;
 
-		while [ ! -e "$dev" ];
-		do	# Let the user interrupt the waiting
-			# to intervene manually if necessary.
-			echo -n .;
-			if ! interruptible_sleep 1;
-			then
-				shell;
-				echo -n "$msg";
-			fi
-		done
-		echo;
-	fi
+			while [ ! -e "$dev" ];
+			do	# Let the user interrupt the waiting
+				# to intervene manually if necessary.
+				echo -n .;
+				if ! interruptible_sleep 1;
+				then
+					shell;
+					echo -n "$msg";
+				fi
+			done
+			echo;
+		fi
+
+		# Verify that $dev matches the $selector if specified.
+		if [ -n "$selector" ];
+		then	# Is $selector in the output of blkid(8)?
+			 if ! blkid --output export "$dev" \
+				 | fgrep -qx "$selector";
+			 then
+				 local prompt="$dev doesn't match $selector. ";
+				 prompt="$prompt Do you want to continue? "
+				 prompt="$prompt (y/n) ";
+				 local ans;
+				 read -p "$prompt" ans;
+				 if [ "$ans" != "y" ];
+				 then
+					 shell;
+					 continue;
+				 fi
+			 fi
+		fi
+
+		break;
+	done
 }
 
 # Use blkdev(8) to scan for $selector.  Returns the resolved $dev in $ret_var.
@@ -92,7 +117,7 @@ call on_boot;
 # Wait for $ROOT_DEV to become available.
 if [ "$ROOT_DEV" != "" ];
 then	# We have a concrete device to wait for.
-	wait_for_dev "$ROOT_DEV";
+	wait_for_dev "$ROOT_DEV" "$ROOT_DEV_SELECTOR";
 else	# Export $ROOT_DEV for the scripts we call.
 	using ROOT_DEV_SELECTOR;
 	wait_for_dev_selector "$ROOT_DEV_SELECTOR" ROOT_DEV;
