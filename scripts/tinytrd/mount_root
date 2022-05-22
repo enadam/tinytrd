@@ -33,6 +33,7 @@ esac
 
 # Try until $MOUNT_DIR is mounted.  Unfortunately there isn't a good test(1)
 # for it.
+first="yes";
 get_me -d "$MOUNT_DIR";
 while ! findmnt -nf --mountpoint "$MOUNT_DIR" > /dev/null;
 do
@@ -42,6 +43,13 @@ do
 		mount -o "$mount_opts" "$ROOT_DEV" "$MOUNT_DIR" \
 			|| shell;
 	else
+		if [ "$first" = "yes" ];
+		then
+			first="no";
+			echo	"When you're prompted for a password," \
+				"feel free to hit ^D for a subshell.";
+		fi
+
 		if ! unlock_root;
 		then	# Some error or user hit ^D to escape.
 			# The user can unlock $ROOT_DEV manually
@@ -53,7 +61,7 @@ do
 		if ! mount -o "$mount_opts" "/dev/mapper/$DM_DEV" "$MOUNT_DIR";
 		then	# Try unlocking again, maybe the password was wrong.
 			cryptsetup close "$DM_DEV";
-			echo "Let's try this again.  (^C to get a shell)";
+			echo "Let's try this again.  (^C to get a subshell)";
 			if ! interruptible_sleep 1;
 			then
 				echo;
