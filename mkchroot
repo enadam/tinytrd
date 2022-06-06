@@ -29,6 +29,11 @@
 # $INSTALL is the list of binaries to install.  These are required.
 INSTALL="findmnt blkid";
 
+# Some binaries may need this (GCC support library).
+lib="/lib/x86_64-linux-gnu/libgcc_s.so.1";
+[ -f "$lib" ] \
+	&& INSTALL="$INSTALL $lib";
+
 # The rest are optional if you don't intend to use certain features:
 # comment this out if you'll have $CRYPTSETUP=none in root.conf
 INSTALL="$INSTALL cryptsetup";
@@ -47,7 +52,14 @@ which() {
 		|| local PATH="$PATH:/usr/sbin:/sbin";
 
 	for prg;
-	do	# Tell bash to search the $PATH even if $prg is a built-in.
+	do
+		case "$prg" in
+		/*)	# $prg is already absolute.
+			echo "$prg";
+			continue;
+		esac
+
+		# Tell bash to search the $PATH even if $prg is a built-in.
 		if ! type -P "$prg";
 		then
 			echo "$0: $prg: not found" >&2;
