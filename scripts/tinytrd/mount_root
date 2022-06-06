@@ -39,7 +39,6 @@ while ! findmnt -nf --mountpoint "$MOUNT_DIR" > /dev/null;
 do
 	if [ "$DM_DEV" = "" ];
 	then	# $ROOT_DEV is not encrypted, don't try to unlock it.
-		call pre_mount;
 		mount -o "$mount_opts" "$ROOT_DEV" "$MOUNT_DIR" \
 			|| shell;
 	else
