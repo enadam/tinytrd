@@ -107,9 +107,10 @@ wait_for_dev_selector() {
 }
 
 # Main starts here.
-mkdir -p /proc /dev "$MOUNT_DIR" /mnt /tmp /run /var/run;
-mount -t proc		-o noexec,nosuid,nodev	proc /proc;
-mount -t devtmpfs	-o nosuid		udev /dev;
+mkdir -p /proc /sys /dev "$MOUNT_DIR" /mnt /tmp /run /var/run;
+mount -t proc		-o noexec,nosuid,nodev	proc	/proc;
+mount -t sysfs		-o noexec,nosuid,nodev	sysfs	/sys;
+mount -t devtmpfs	-o nosuid		udev	/dev;
 
 call on_boot;
 
@@ -136,6 +137,7 @@ done
 call post_mount;
 
 mount --move /dev  "$MOUNT_DIR/dev";
+mount --move /sys  "$MOUNT_DIR/sys";
 mount --move /proc "$MOUNT_DIR/proc";
 mount -t tmpfs -o nosuid,nodev,size=10%,mode=0755 tmpfs "$MOUNT_DIR/run";
 
