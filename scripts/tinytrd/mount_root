@@ -61,12 +61,10 @@ do
 		if ! mount -o "$mount_opts" "/dev/mapper/$DM_DEV" "$MOUNT_DIR";
 		then	# Try unlocking again, maybe the password was wrong.
 			cryptsetup close "$DM_DEV";
-			echo "Let's try this again.  (^C to get a subshell)";
-			if ! interruptible_sleep 1;
-			then
-				echo;
-				shell;
-			fi
+			echo	"Let's try this again." \
+				"(Press Enter to get a subshell.)";
+			interruptible_sleep 1 \
+				|| shell;
 		fi
 	fi
 done

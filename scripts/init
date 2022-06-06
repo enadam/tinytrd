@@ -18,7 +18,6 @@ with_ctty() {
  
 # Launch an interactive shell for investigation.
 shell() {
-	echo;
 	with_ctty sh -l;
 	echo;
 }
@@ -33,7 +32,7 @@ wait_for_dev() {
 		if [ ! -e "$dev" ];
 		then	# Scan for $dev periodically.
 			local msg="Waiting for $dev to come online";
-			msg="$msg (^C to enter a subshell)...";
+			msg="$msg (Press Enter to get a subshell)...";
 			echo -n "$msg";
 			sleep 1;
 
@@ -82,7 +81,7 @@ wait_for_dev_selector() {
 	if [ $? -ne 0 ];
 	then
 		local msg="Waiting for device to come online";
-		msg="$msg (^C to enter a subshell)...";
+		msg="$msg (Press Enter to get a subshell)...";
 		echo -n "$msg";
 		sleep 1;
 

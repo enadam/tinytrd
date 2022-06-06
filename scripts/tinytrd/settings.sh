@@ -90,9 +90,14 @@ assert() {
 
 # Sleep for a while and return 1 if it was interrupted.
 interruptible_sleep() {
-	trap "return 1" INT;
-	sleep "$@";
-	trap INT;
+	# I couldn't get ^C to generate a SIGINT in this environment,
+       	# so here is this workaround.
+	if read -s -t $1;
+	then	# User pressed Enter.
+		return 1;
+	else	# Timeout, not interrupted.
+		return 0;
+	fi
 }
 
 # Call a user-provided function or external program if defined/exists.
