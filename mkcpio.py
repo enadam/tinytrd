@@ -230,7 +230,7 @@ def mkcpio(top, args):
 				continue
 			elif fname in decrypt_this_dir \
 					or has_attr(path, XATTR_DECRYPT):
-				if not args.exclude_encrypted:
+				if args.include_decrypted:
 					decrypt.append(path)
 				continue
 
@@ -286,11 +286,10 @@ parser.add_argument("--root", "-R", dest="root_owner", action="store_true",
 mutex = parser.add_mutually_exclusive_group()
 mutex.add_argument("--include-encrypted", "-I", action="store_true",
 	help="Don't decrypt files, just include them encrypted.")
-mutex.add_argument("--exclude-encrypted", "-X", action="store_true",
-	help="Skip encrypted files, don't include them in the archives "
-		"in any form.")
+mutex.add_argument("--include-decrypted", "-D", action="store_true",
+	help="Include files in the archive decrypted.")
 
-parser.add_argument("--decrypt-cmd", "-D", metavar="COMMAND",
+parser.add_argument("--decrypt-cmd", "-d", metavar="COMMAND",
 	help=("Decrypt files with this command, %s by default."
 		% ' '.join(DECRYPT_CMD)))
 parser.add_argument("--decrypt-ext", "-x", metavar="EXTENSION",

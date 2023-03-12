@@ -7,7 +7,7 @@
 # cpio archives compressed with xz(1) containing the "chroot" and the
 # "scripts" directories.
 #
-# Usage: mktinytrd [-i <scripts-dir>] [-o <chroot-dir>] [-Z] [-crl] [-RIXDx]
+# Usage: mktinytrd [-i <scripts-dir>] [-o <chroot-dir>] [-Z] [-crl] [-RIDdx]
 #                  [<additional-dir>] ...
 #
 # With -io you can override the default "chroot" and "scripts" directories.
@@ -28,7 +28,7 @@ mkcpio_opts=();
 # https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/scripts/xz_wrap.sh?h=v5.12#n23
 compress="xz -c --check=crc32 --x86 --lzma2=dict=32MiB";
 
-while getopts "i:o:ZcrlRIXD:x:" optchar;
+while getopts "i:o:ZcrlRIDd:x:" optchar;
 do
 	case "$optchar" in
 	i)
@@ -39,9 +39,9 @@ do
 		compress="";;
 	c|r|l)
 		mkchroot_opts[${#mkchroot_opts[@]}]="-$optchar";;
-	R|I|X)
+	R|I|D)
 		mkcpio_opts[${#mkcpio_opts[@]}]="-$optchar";;
-	D|x)
+	d|x)
 		mkcpio_opts[${#mkcpio_opts[@]}]="-$optchar";
 		mkcpio_opts[${#mkcpio_opts[@]}]="$OPTARG";;
 	*)
