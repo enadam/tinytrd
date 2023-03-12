@@ -77,7 +77,7 @@ wait_for_dev_selector() {
 	local selector="$1";
 	local ret_var="$2";
 
-	local dev=`blkid -t "$selector" -o device`;
+	local wfs_dev=`blkid -t "$selector" -o device`;
 	if [ $? -ne 0 ];
 	then
 		local msg="Waiting for device to come online";
@@ -87,7 +87,7 @@ wait_for_dev_selector() {
 
 		while :;
 		do
-			dev=`blkid -t "$selector" -o device`;
+			wfs_dev=`blkid -t "$selector" -o device`;
 			[ $? -eq 0 ] \
 				&& break;
 
@@ -101,9 +101,9 @@ wait_for_dev_selector() {
 		echo;
 	fi
 
-	# Return $dev in $ret_var if specified.
+	# Return $wfs_dev in $ret_var if specified.
 	[ -z "$ret_var" ] \
-		|| eval $ret_var=\"$dev\";
+		|| eval $ret_var=\"$wfs_dev\";
 }
 
 # Main starts here.
