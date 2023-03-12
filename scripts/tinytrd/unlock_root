@@ -96,8 +96,14 @@ call_cryptsetup() {
 		echo "$@" >&2;
 		[ -t 0 ] \
 			|| cat;
-	else	# Suppress errors, which are likely because of wrong password.
-		"$@" || true;
+	elif "$@";
+	then
+		return 0;
+	elif [ $? -eq 2 ];
+	then	# Wrong password, retry.
+		return 0;
+	else	# Other error, fail the script.
+		return 1;
 	fi
 }
 
